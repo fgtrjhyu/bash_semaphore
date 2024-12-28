@@ -2,23 +2,26 @@
 
 BASEDIR=$(dirname $0)
 LOCKDIR=${BASEDIR}/lock
-LOCKQUEUED=${LOCKDIR}/queued
-LOCKFILES=${LOCKDIR}/count/*
+LOCKQUEUE=${LOCKDIR}/count
+LOCKFILE=${LOCKQUEUE}/*
+WAITSTAT=255
 
 longsleep() {
-  flock -s ${LOCKQUEUED} sleep 600
+  flock -s "${LOCKQUEUE}" sleep 600
 }
 
+RC=0
 while true; do
-  for LOCKFILE in ${LOCKFILES[@]}; do
+  for LOCKFILE in ${LOCKFILE[@]}; do
     export LOCKFILE
-    if flock -n -x -w 0 "${LOCKFILE}" ${BASEDIR}/command.sh; then
-      printf "%s: %02d: unlocked.\n" "${LOCKFILE}" "${INDEX}"
+    flock -E${WAITSTAT} -n -x "${LOCKFILE}" "${BASEDIR}/command.sh"
+    RC=$?
+    if [[ "${RC}" -ne "${WAITSTAT}" ]]; then
       break 2
     fi
   done
-
   # Prevent the display of messages when processes receives SIGALRM
   (longsleep 2>/dev/null)
 done
-flock -x ${LOCKDIR} fuser -s -k -ALRM ${LOCKQUEUED}
+printf "%s: %02d: end: exitcode=%03d.\n" "${LOCKFILE}" "${INDEX}" "${RC}"
+flock -x ${LOCKDIR} fuser -s -k -ALRM ${LOCKQUEUE}
